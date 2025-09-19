@@ -20,7 +20,6 @@ from settings import settings
 
 from libintegration.middlewares.header_middleware import HeaderMiddleware
 
-
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="A caching service for efficient data retrieval and storage.",
