@@ -32,8 +32,13 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = Field(default="Caching Service", env="PROJECT_NAME")
 
     # Databases & SQLAlchemy
-    DATABASE_URL: str
-    DATABASE_ENGINE_ECHO: bool
+    DATABASE_URL: str = Field(
+        default="postgresql://postgres:mosafdar%40123@localhost:5432/integrationdb",
+        env="DATABASE_URL",
+    )
+    DATABASE_ENGINE_ECHO: bool = Field(
+        default=True, env="DATABASE_ENGINE_ECHO"
+    )  # Set to False in production.
 
     # Generic timeouts
     TIMEOUT: int = Field(default=30, env="TIMEOUT")
