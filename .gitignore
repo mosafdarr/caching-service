@@ -1,0 +1,29 @@
+*$py.class
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Database
+*.db
+
+# Testing
+.pytest_cache/
+__pycache__/
+htmlcov/
+.coverage
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+#virtual environments
+.venv/
+venv/
+
+.cspell/
