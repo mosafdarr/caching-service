@@ -15,6 +15,7 @@ Example:
 """
 
 from fastapi import FastAPI
+
 from logger import logger
 from settings import settings
 
@@ -36,7 +37,7 @@ app.include_router(caches.cache_router)
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
+async def health():
     """Health check endpoint.
 
     Returns:
