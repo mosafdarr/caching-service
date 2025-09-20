@@ -1,26 +1,30 @@
 """"Cache-related API routes.
 
-This module defines the FastAPI router for cache operations,
-including endpoints for reading and creating cache payloads.
+This module defines the FastAPI router for cache operations, including
+endpoints for reading and creating cache payloads. It also provides two
+lightweight decorators to simulate read-through and write-through caching
+behavior using in-memory structures.
 
 Routers:
     cache_router (APIRouter): Router with prefix `/payload` exposing cache endpoints.
 
 Endpoints:
-    GET /payload/{id}: Retrieve a cache entry by ID.
-    POST /payload: Create a new cache payload.
+    GET /payload/{payload_id}: Retrieve a cache entry by ID (checks in-memory cache first).
+    POST /payload: Create a new cache payload (short-circuits if payload already seen).
 
 Notes:
-    - A lightweight in-memory set (REDIS_CACHED_IDS) is used to emulate a cache
-      key registry for demonstration purposes. The `check_redis_cache` decorator
-      hashes the incoming payload to derive a deterministic `payload_id`. If a
-      matching ID exists, the endpoint short-circuits and returns the cached id.
-    - In production, replace REDIS_CACHED_IDS with a real cache (e.g., Redis)
-      and persist/cache both the derived id and any relevant computed result.
+    - REDIS_CACHED_IDS and REDIS_OUTPUT_CACHE are in-memory stand-ins for Redis.
+      Replace with a real Redis client in production. The in-memory approach
+      is process-local and not suitable for multi-instance deployments.
 """
 
-from fastapi import APIRouter, Depends
+from __future__ import annotations
+
 from functools import wraps
+from threading import Lock
+from typing import Dict
+
+from fastapi import APIRouter, Depends
 
 from logger import logger
 from settings import db_config
@@ -31,56 +35,94 @@ from libintegration.domain.models import cache_model
 from libintegration.domain.controllers.cache_controller import CacheController
 from libintegration.domain.utils import caching_utils
 
-
-# In-memory registry of cached payload IDs (demo only).
-REDIS_CACHED_IDS = set()
-
+REDIS_CACHED_IDS: set[str] = set()
+REDIS_OUTPUT_CACHE: Dict[str, cache_model.GetCacheResponse] = {}
+_CACHE_LOCK = Lock()
 
 def check_redis_cache(func):
-    """Decorator to short-circuit POST requests when payload is already cached.
+    """
+    POST decorator: short-circuit if an identical payload was previously submitted.
 
     Behavior:
-        - Extract the payload (from kwargs or positional args).
-        - Compute a deterministic hash (payload_id) using `caching_utils`.
-        - If the id is found in REDIS_CACHED_IDS, immediately return a
-          `CreateCachePayloadResponse` containing that id.
-        - Otherwise, inject `payload_id` into kwargs, call the wrapped function,
-          and add the returned id to the registry if present.
+        - Computes a deterministic `payload_id` via
+          `caching_utils.calculate_payload_hash(payload)`.
+        - If the id exists in `REDIS_CACHED_IDS`, immediately returns
+          `CreateCachePayloadResponse(payload_id=...)` without invoking the handler.
+        - Otherwise:
+            * Injects `payload_id` into `kwargs`.
+            * Calls the wrapped route handler.
+            * On success, stores the returned id in `REDIS_CACHED_IDS`.
 
-    Args:
-        func: The route handler to wrap.
-
-    Returns:
-        Callable: A wrapped function that performs cache lookups prior to execution.
+    Warning:
+        This is an in-memory demonstration only. For production, use a shared,
+        external cache (e.g., Redis) and consider eviction strategies.
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        """Wrapper that performs the cache check and manages the payload_id flow."""
-        payload = kwargs.get('payload')
-        if not payload:
+        payload = kwargs.get("payload")
+        if payload is None:
             for arg in args:
                 if isinstance(arg, cache_model.CreateCachePayloadRequest):
                     payload = arg
                     break
 
-        if payload:
+        payload_id = None
+        if payload is not None:
             payload_id = caching_utils.calculate_payload_hash(payload)
-            if payload_id in REDIS_CACHED_IDS:
-                return cache_model.CreateCachePayloadResponse(payload_id=payload_id)
+            with _CACHE_LOCK:
+                if payload_id in REDIS_CACHED_IDS:
+                    logger.info("POST cache hit (payload_id=%s) – short-circuiting.", payload_id)
+                    return cache_model.CreateCachePayloadResponse(payload_id=payload_id)
 
-        # pass payload_id & call the router controller function
-        kwargs['payload_id'] = payload_id
+        kwargs["payload_id"] = payload_id
         response = func(*args, **kwargs)
+
         response_payload_id = getattr(response, "payload_id", None)
-    
         if response_payload_id:
-            REDIS_CACHED_IDS.add(response_payload_id)
+            with _CACHE_LOCK:
+                REDIS_CACHED_IDS.add(response_payload_id)
 
         return response
+
+    return wrapper
+
+def cache_read_through(func):
+    """
+    GET decorator: check an in-memory map for `payload_id` first; on miss, call handler and cache.
+
+    Behavior:
+        - Reads `payload_id` from the path parameter (FastAPI passes it in `kwargs`).
+        - If present in `REDIS_OUTPUT_CACHE`, returns the cached `GetCacheResponse`.
+        - Otherwise:
+            * Calls the wrapped handler.
+            * If the response is a `GetCacheResponse`, stores it in `REDIS_OUTPUT_CACHE`.
+
+    Note:
+        This read-through cache avoids duplicate DB lookups for frequently
+        requested payloads within the same process. Replace with a distributed
+        cache layer for multi-instance environments.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        payload_id = kwargs.get("id")
+        if payload_id:
+            with _CACHE_LOCK:
+                cached = REDIS_OUTPUT_CACHE.get(payload_id)
+            if cached is not None:
+                logger.info("GET cache hit (payload_id=%s) – returning cached response.", payload_id)
+                return cached
+
+        response = func(*args, **kwargs)
+
+        if isinstance(response, cache_model.GetCacheResponse) and payload_id:
+            with _CACHE_LOCK:
+                REDIS_OUTPUT_CACHE[payload_id] = response
+
+        return response
+
     return wrapper
 
 
-# Public router exposing cache endpoints under /payload
 cache_router = APIRouter(
     prefix="/payload",
     tags=["Cache"],
@@ -96,21 +138,31 @@ cache_router = APIRouter(
     response_model=cache_model.GetCacheResponse,
     include_in_schema=True,
 )
-def read_users(
-    payload_id: str,
-    db_sesssion=Depends(db_config.get_session),
-):
-    """Retrieve a cache payload by its ID.
+@cache_read_through
+def read_payload(
+    id: str,
+    db_session=Depends(db_config.get_session),
+) -> cache_model.GetCacheResponse:
+    """
+    Retrieve a cache payload by its ID.
+
+    The `@cache_read_through` decorator consults the in-memory cache first
+    and falls back to the controller/DB path on a miss.
 
     Args:
-        payload_id (str): Unique identifier of the cache payload.
-        db_sesssion: Database session dependency.
+        id (str): Deterministic payload identifier.
+        db_session: Database session dependency.
 
     Returns:
-        dict: Placeholder response containing the output.
+        GetCacheResponse: The stored/interleaved output for the given payload id.
+
+    Raises:
+        HTTPException: If the payload cannot be found (propagated from controller).
     """
-    logger.info(f"Read users endpoint called with payload_id: {payload_id}.")
-    return {"output": "string"}
+    logger.info(f"GET /payload/{id}")
+    response = CacheController.get(payload_id=id, db_session=db_session)
+    return response
+
 
 @cache_router.post(
     "",
@@ -122,19 +174,24 @@ def read_users(
 @check_redis_cache
 def create_payload(
     payload: cache_model.CreateCachePayloadRequest,
-    payload_id: str = None,
-    db_sesssion=Depends(db_config.get_session),
-):
-    """Create a new cache payload.
+    db_session=Depends(db_config.get_session),
+    payload_id=Depends(lambda: None),
+) -> cache_model.CreateCachePayloadResponse:
+    """
+    Create a new cache payload.
+
+    The `@check_redis_cache` decorator computes a deterministic id from the payload
+    and short-circuits if it was seen before; otherwise the controller handles the
+    transformation and persistence.
 
     Args:
-        payload (CreateCachePayloadRequest): The payload data to be cached.
-        db_sesssion: Database session dependency.
+        payload (CreateCachePayloadRequest): Input lists to transform and cache.
+        db_session: Database session dependency.
+        payload_id: Precomputed identifier injected by the decorator (may be None).
 
     Returns:
-        dict: Placeholder response containing the payload ID.
+        CreateCachePayloadResponse: Response containing the stable payload id.
     """
-    logger.info(f"Create payload endpoint called with payload: {payload}.")
-    response = CacheController.create(payload=payload, payload_id=payload_id, db_session=db_sesssion)
-
+    logger.info("POST /payload called with payload=%s (precomputed_id=%s).", payload, payload_id)
+    response = CacheController.create(payload=payload, payload_id=payload_id, db_session=db_session)
     return response
