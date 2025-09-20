@@ -19,6 +19,8 @@ from logger import logger
 from settings import settings
 
 from libintegration.middlewares.header_middleware import HeaderMiddleware
+from libintegration.domain.routers import caches
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -28,6 +30,9 @@ app = FastAPI(
 
 # Register cross-cutting middleware (CORS, timing, global error handling).
 HeaderMiddleware.add_middleware(app)
+
+# Include application routers
+app.include_router(caches.cache_router)
 
 
 @app.get("/health")
