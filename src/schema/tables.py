@@ -45,20 +45,21 @@ class TimestampMixin:
     )
 
 
-# TODO: Remove this dummy user table and add actual tables needed for caching service.
-class User(TimestampMixin, Base):
-    """Example user table (placeholder).
+class cache_payloads(Base, TimestampMixin):
+    """Example cache payload table.
+
+    This is a placeholder table definition for the caching service.
+    It should be replaced with actual models relevant to caching operations.
 
     Attributes:
-        id (int): Primary key.
-        email (str): Unique email address of the user.
-        hashed_password (str): Hashed password for authentication.
-        is_active (bool): Indicates whether the user account is active.
+        id (int): Primary key identifier.
+        input_payload (str): Input payload data.
+        output_payload (str): Output payload data.
     """
 
-    __tablename__ = "users"
+    __tablename__ = "cache_payloads"
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    is_active = Column(Boolean, default=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    payload_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    input_payload: Mapped[str] = mapped_column(String(255), nullable=False)
+    output_payload: Mapped[str] = mapped_column(String(255), nullable=False)
