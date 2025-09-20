@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir poetry
 COPY pyproject.toml poetry.lock ./
 RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi --no-root
 
+# Gunicorn + Uvicorn for running FastAPI
+RUN pip install --no-cache-dir "gunicorn" "uvicorn[standard]"
+
 # App code
 COPY . .
 
