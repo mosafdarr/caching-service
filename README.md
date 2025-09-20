@@ -62,7 +62,6 @@ It uses:
 ---
 
 ## Architecture
-
 ### Flow: POST /payload
 
 ```mermaid
@@ -93,8 +92,13 @@ sequenceDiagram
         end
         Decorator-->>Client: {payload_id}
     end
+```
 
 ### Flow: GET /payload/{id}
+
+```mermaid
+sequenceDiagram
+    participant Client
     participant FastAPI
     participant Decorator as @cache_read_through
     participant Controller as CacheController
@@ -116,6 +120,7 @@ sequenceDiagram
             Controller-->>Client: 404
         end
     end
+```
 
 ### Modules
 
@@ -282,7 +287,4 @@ Use conventional commits:
 
 - Replace in-memory cache (`REDIS_CACHED_IDS`, `REDIS_OUTPUT_CACHE`) with real Redis.
 - Add eviction strategies (LRU, TTL).
-- Improve error handling (map DB errors to clean 4xx/5xx).
-- Horizontal scaling with shared cache.
-- Metrics/observability (Prometheus, OpenTelemetry).
 - Load testing to validate 1M+ hits resilience.
