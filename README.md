@@ -118,7 +118,7 @@ sequenceDiagram
         end
         Decorator-->>Client: {payload_id}
     end
-````
+```
 
 ### Flow: GET /payload/{id}
 
