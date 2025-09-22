@@ -1,4 +1,3 @@
-````markdown
 # Caching Service
 
 A **FastAPI‑based microservice** that provides deterministic caching for transformed payloads.  
@@ -481,5 +480,3 @@ Use conventional commits:
 * Add API Gateway caching for even faster GETs.
 * Use managed Redis for scaling and operational simplicity.
 * Add background workers to **pre‑warm** popular keys on deploy/scale‑out.
-
-````
