@@ -224,3 +224,12 @@ class TestCacheEndpoints(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         self.assertIn("application/json", resp.headers["content-type"])
+
+    def test_get_cache_id_not_found(self):
+        """GET with invalid id format returns 422."""
+
+        resp = client.get("/payload/invalid_id!@#")
+    
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("detail", resp.json())
+        self.assertIn("not found", resp.json()["detail"].get("message").lower())

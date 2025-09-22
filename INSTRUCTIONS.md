@@ -38,10 +38,7 @@ _Last updated: 2025‑09‑22_
     - Lets you test both endpoints.
     - Shows how fast and consistent the cache is.
 
-**Example:**
-```bash
-python3 -m cache_cli -r 5 -j '{"list_1":["a"],"list_2":["b"]}'
-```
+**Example:** python3 -m cache_cli -r 5 -j '{"list_1":["a"],"list_2":["b"]}'
 
 ---
 
@@ -102,7 +99,4 @@ python3 -m cache_cli -r 5 -j '{"list_1":["a"],"list_2":["b"]}'
 - Use managed Redis for scaling.
 - Add worker tools to keep cache warm.
 
----
-
-**End of INSTRUCTIONS.md**
 ```

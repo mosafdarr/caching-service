@@ -23,12 +23,14 @@ Usage:
 
 import json
 
+from fastapi import HTTPException
 from pydantic import BaseModel
 from logger import logger
 from sqlalchemy.orm import Session
 
 from libintegration.domain.apps.transformer import TransformerApp
 from libintegration.domain.models import cache_model
+from libintegration.domain.utils.caching_utils import exception_handler
 
 from schema.tables import cache_payloads
 
@@ -53,6 +55,7 @@ class CacheController(BaseModel):
     """
 
     @staticmethod
+    @exception_handler
     def get(payload_id: str, db_session: Session) -> cache_model.GetCacheResponse:
         """Retrieve a cached payload by its identifier.
 
@@ -79,7 +82,7 @@ class CacheController(BaseModel):
         if not cached_result:
             error_message = f"Payload ID {payload_id} not found in cache."
             logger.error(error_message)
-            raise ValueError(error_message)
+            raise HTTPException(status_code=404, detail=error_message)
 
         output_payload = json.loads(cached_result[0].output_payload)
         logger.info(f"Retrieved cached payload for ID {payload_id}: {output_payload}")
@@ -87,6 +90,7 @@ class CacheController(BaseModel):
         return cache_model.GetCacheResponse(**output_payload)
 
     @staticmethod
+    @exception_handler
     def create(
         payload_id: str, payload: cache_model.CreateCachePayloadRequest, db_session: Session
     ) -> cache_model.CreateCachePayloadResponse:
