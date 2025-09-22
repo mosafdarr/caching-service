@@ -482,4 +482,4 @@ Use conventional commits:
 * Use managed Redis for scaling and operational simplicity.
 * Add background workers to **pre‑warm** popular keys on deploy/scale‑out.
 
-```
+````
